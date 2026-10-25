@@ -91,6 +91,10 @@ static void rp2040_configure_pio_usb(void) {
   pio_usb_configuration_t pio_cfg = PIO_USB_DEFAULT_CONFIG;
   pio_cfg.pin_dp = PIN_USB_HOST_DP;
 
+  // This is necessary, USB defaults to ch0 which is used by DVI
+  // (So says copilot anyway)
+  pio_cfg.tx_ch      = 9;
+
 #if defined(ARDUINO_RASPBERRY_PI_PICO_W)
   // For pico-w, PIO is also used to communicate with cyw43
   // Therefore we need to alternate the pio-usb configuration
