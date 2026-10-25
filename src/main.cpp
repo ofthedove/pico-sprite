@@ -1,28 +1,7 @@
-// SPDX-FileCopyrightText: 2025 Tim Cocks for Adafruit Industries
-//
-// SPDX-License-Identifier: MIT
-
-/*********************************************************************
- Adafruit invests time and resources providing this open source code,
- please support Adafruit and open-source hardware by purchasing
- products from Adafruit!
-
- MIT license, check LICENSE for more information
- Copyright (c) 2019 Ha Thach for Adafruit Industries
- All text above, and the splash screen below must be included in
- any redistribution
-*********************************************************************/
-
-/* This example demonstrates use of usb host with a standard HID boot mouse.
- * - Host depends on MCU:
- *   - rp2040: bit-banging 2 GPIOs with Pico-PIO-USB library (roothub port1)
- *
- * Requirements:
- * - For rp2040:
- *   - Pico-PIO-USB library
- *   - 2 consecutive GPIOs: D+ is defined by PIN_USB_HOST_DP, D- = D+ +1
- *   - Provide VBus (5v) and GND for peripheral
- */
+// Based on examples from Adafruit
+// USB Host: https://learn.adafruit.com/using-a-mouse-with-usb-host?view=all#arduino
+// DVI: https://github.com/adafruit/Adafruit-DVI-HSTX/blob/main/examples/00simpletest/00simpletest.ino
+// (Same as https://learn.adafruit.com/adafruit-picowbell-hstx-dvi-output/arduino I think)
 
 #include <Arduino.h>
 #include "pio_usb.h"
@@ -34,10 +13,47 @@
 #include "hid_mouse_reports.h"
 
 
-bool printed_blank = false;
+
+
+#include <Adafruit_dvhstx.h>
+
+#if defined(ADAFRUIT_FEATHER_RP2350_HSTX)
+DVHSTXPinout pinConfig = ADAFRUIT_FEATHER_RP2350_CFG;
+#elif defined(ADAFRUIT_METRO_RP2350)
+DVHSTXPinout pinConfig = ADAFRUIT_METRO_RP2350_CFG;
+#elif defined(ARDUINO_ADAFRUIT_FRUITJAM_RP2350)
+DVHSTXPinout pinConfig = ADAFRUIT_FRUIT_JAM_CFG;
+#elif (defined(ARDUINO_RASPBERRY_PI_PICO_2) || defined(ARDUINO_RASPBERRY_PI_PICO_2W))
+DVHSTXPinout pinConfig = ADAFRUIT_HSTXDVIBELL_CFG;
+#else
+// If your board definition has PIN_CKP and related defines,
+// DVHSTX_PINOUT_DEFAULT is available
+DVHSTXPinout pinConfig = DVHSTX_PINOUT_DEFAULT;
+#endif
+
+DVHSTX16 display(pinConfig, DVHSTX_RESOLUTION_320x240);
+
+volatile bool dvi_initialized = false;
+
+
 
 void setup() {
   Serial.begin(115200);
+
+
+
+  while(!Serial);
+  if (!display.begin()) { // Blink LED if insufficient RAM
+    pinMode(LED_BUILTIN, OUTPUT);
+    for (;;)
+      digitalWrite(LED_BUILTIN, (millis() / 500) & 1);
+  }
+  Serial.println("display initialized");
+  dvi_initialized = true;
+}
+
+void setup1() {
+  while(!dvi_initialized) { delay(1); }
 
   // configure pio-usb: defined in usbh_helper.h
   rp2040_configure_pio_usb();
@@ -54,6 +70,13 @@ void setup() {
 }
 
 void loop() {
+  display.drawLine(random(display.width()), random(display.height()),
+                  random(display.width()), random(display.height()),
+                  random(65536));
+  sleep_ms(1);
+}
+
+void loop1() {
   USBHost.task();
   Serial.flush();
 }
@@ -116,39 +139,39 @@ void tuh_hid_report_received_cb(uint8_t dev_addr, uint8_t instance, uint8_t cons
           bool Start = report[6] & 0b0010 << 4;
           bool Select = report[6] & 0b0001 << 4;
 
-          if(x < 127) { Serial.print("Left   ");} else
-          if(x > 127) { Serial.print("Right  ");} else
-                      { Serial.print("       ");}
+          // if(x < 127) { Serial.print("Left   ");} else
+          // if(x > 127) { Serial.print("Right  ");} else
+          //             { Serial.print("       ");}
 
-          if(y < 127) { Serial.print("Up    ");} else
-          if(y > 127) { Serial.print("Down  ");} else
-                      { Serial.print("      ");}
+          // if(y < 127) { Serial.print("Up    ");} else
+          // if(y > 127) { Serial.print("Down  ");} else
+          //             { Serial.print("      ");}
 
-          if(A) { Serial.print("A ");} else
-                { Serial.print("  ");}
+          // if(A) { Serial.print("A ");} else
+          //       { Serial.print("  ");}
 
-          if(B) { Serial.print("B ");} else
-                { Serial.print("  ");}
+          // if(B) { Serial.print("B ");} else
+          //       { Serial.print("  ");}
 
-          if(X) { Serial.print("X ");} else
-                { Serial.print("  ");}
+          // if(X) { Serial.print("X ");} else
+          //       { Serial.print("  ");}
 
-          if(Y) { Serial.print("Y ");} else
-                { Serial.print("  ");}
+          // if(Y) { Serial.print("Y ");} else
+          //       { Serial.print("  ");}
 
-          if(L) { Serial.print("L ");} else
-                { Serial.print("  ");}
+          // if(L) { Serial.print("L ");} else
+          //       { Serial.print("  ");}
 
-          if(R) { Serial.print("R ");} else
-                { Serial.print("  ");}
+          // if(R) { Serial.print("R ");} else
+          //       { Serial.print("  ");}
 
-          if(Start) { Serial.print("Start ");} else
-                    { Serial.print("      ");}
+          // if(Start) { Serial.print("Start ");} else
+          //           { Serial.print("      ");}
 
-          if(Select) { Serial.print("Select ");} else
-                     { Serial.print("       ");}
+          // if(Select) { Serial.print("Select ");} else
+          //            { Serial.print("       ");}
 
-          Serial.println();
+          // Serial.println();
         }
         else
         {
