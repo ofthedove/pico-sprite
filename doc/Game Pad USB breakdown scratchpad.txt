@@ -1,0 +1,17 @@
+Up      2  ! 0111 1111
+Down    2  127
+Left    1  ! 0111 1111
+Right   1  127
+
+// Up/Down and Left/Right are uint8_t axis that are 127 at rest, and go to 0 or 255
+
+A       6  0010 1111
+B       6  0100 1111
+X       6  0001 1111
+Y       6  1000 0000
+
+L       7  0000 0001
+R       7  0000 0010
+
+Start   7  0010 0000
+Select  7  0001 0000
