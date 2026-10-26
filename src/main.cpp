@@ -18,11 +18,15 @@
 #include <Adafruit_dvhstx.h>
 
 DVHSTXPinout pinConfig = ADAFRUIT_HSTXDVIBELL_CFG;
+
+// If you change the resolution, you must change the defines too!
+// (Can't use display.width() on anything that sets an array size)
 DVHSTX16 display(pinConfig, DVHSTX_RESOLUTION_320x240, true);
+#define DISPLAY_WIDTH 320
+#define DISPLAY_HEIGHT 240
 
 volatile bool dvi_initialized = false;
 volatile SnesGamepad_StatusWord_t snes_status;
-SnesGamepad_StatusWord_t snes_status_old;
 
 enum
 {
@@ -31,6 +35,24 @@ enum
   Yellow,
   Blue,
   Green,
+  MaxColors,
+
+  HoldRepeatTicks = 25,
+
+  blockWidthPx = 30,
+  blockHeightPx = 30,
+  screenWidthPx = DISPLAY_WIDTH - (DISPLAY_WIDTH % blockWidthPx),
+  screenHeightPx = DISPLAY_HEIGHT - (DISPLAY_HEIGHT % blockHeightPx),
+  gridWidth = screenWidthPx / blockWidthPx,
+  gridHeight = screenHeightPx / blockHeightPx,
+};
+
+const uint16_t colors[MaxColors] = {
+  BLACK,
+  RED,
+  YELLOW,
+  BLUE,
+  GREEN,
 };
 
 void setup1() {
@@ -61,100 +83,96 @@ void setup() {
 }
 
 void loop() {
+  static SnesGamepad_StatusWord_t statusOld = { .word = 0 };
+
   // atomic read (Don't want the USB core changing this on us unexpectedly)
   SnesGamepad_StatusWord_t status;
   status.word = snes_status.word;
 
-  // Only what has changed and is currently pressed
-  status.word = (status.word ^ snes_status_old.word) & status.word;
+  // On Press Bitmap
+  SnesGamepad_StatusWord_t pressed = { .word = 0 };
+  pressed.word = (status.word ^ statusOld.word) & status.word;
 
-  snes_status_old.word = snes_status.word;
+  statusOld.word = snes_status.word;
 
-  const int width = 30;
-  const int height = 30;
-  const int screenWidth = display.width() - (display.width() % width);
-  const int screenHeight = display.height() - (display.height() % height);
-  static int xPos = screenWidth / 2;
-  static int yPos = screenHeight / 2;
-  static uint16_t color = WHITE;
+  // Held Bitmap (this isn't really working dunno why yet.)
+  SnesGamepad_StatusWord_t held = { .word = 0 };
 
-  static uint8_t pixelGrid[10][8] = {0};
+  static uint16_t holdAccumulators[sizeof(status.word) * 8] = { 0 };
+  for(uint8_t i = 0; i < sizeof(status.word) * 8; i++)
+  {
+    if(status.word & (0x1 << i))
+    {
+      holdAccumulators[i]++;
+    }
+    else
+    {
+      holdAccumulators[i] = 0;
+    }
 
-  if (status.bits.A) {
-    color = RED;
-  }
-  if (status.bits.B) {
-    color = YELLOW;
-  }
-  if (status.bits.X) {
-    color = BLUE;
-  }
-  if (status.bits.Y) {
-    color = GREEN;
-  }
-
-  if (status.bits.Left) {
-    xPos -= 30;
-  }
-  if (status.bits.Right) {
-    xPos += 30;
-  }
-  if (status.bits.Up) {
-    yPos -= 30;
-  }
-  if (status.bits.Down) {
-    yPos += 30;
+    if((holdAccumulators[i] != 0) && (holdAccumulators[i] % HoldRepeatTicks == 0))
+    {
+      held.word |= 0x1 << i;
+    }
   }
 
-  if (status.bits.Select) {
-    if (color == RED)
-      pixelGrid[xPos / width][yPos / height] = Red;
-    if (color == GREEN)
-      pixelGrid[xPos / width][yPos / height] = Green;
-    if (color == BLUE)
-      pixelGrid[xPos / width][yPos / height] = Blue;
-    if (color == YELLOW)
-      pixelGrid[xPos / width][yPos / height] = Yellow;
+
+  static int8_t xPos = gridWidth / 2;
+  static int8_t yPos = gridHeight / 2;
+  static uint8_t color = Red;
+
+  static uint8_t pixelGrid[gridWidth][gridHeight] = { 0 };
+
+  if (pressed.Left || held.Left) {
+    xPos--;
+  }
+  if (pressed.Right || held.Right) {
+    xPos++;
+  }
+  if (pressed.Up || held.Up) {
+    yPos--;
+  }
+  if (pressed.Down || held.Down) {
+    yPos++;
   }
 
-  xPos = CLAMP(0, xPos, screenWidth);
-  yPos = CLAMP(0, yPos, screenHeight);
+  xPos = CLAMP(0, xPos, gridWidth);
+  yPos = CLAMP(0, yPos, gridHeight);
+
+  if (pressed.A) {
+    color = Red;
+  }
+  if (pressed.B) {
+    color = Yellow;
+  }
+  if (pressed.X) {
+    color = Blue;
+  }
+  if (pressed.Y) {
+    color = Green;
+  }
+
+  if (status.Select) {
+    pixelGrid[xPos][yPos] = color;
+  }
 
   display.fillScreen(BLACK);
 
-  // drawRect
-  display.fillRect(xPos, yPos, width, height, color);
-
   // Draw Screen
-  for(int i = 0; i < 10; i++)
+  for(int i = 0; i < gridWidth; i++)
   {
-    for(int j = 0; j < 8; j++)
+    for(int j = 0; j < gridHeight; j++)
     {
-      switch(pixelGrid[i][j])
-      {
-        case Black:
-          // do nothing
-          break;
-
-        case Red:
-          display.fillRect(i * width, j * height, width, height, RED);
-          break;
-
-        case Yellow:
-          display.fillRect(i * width, j * height, width, height, YELLOW);
-          break;
-
-        case Blue:
-          display.fillRect(i * width, j * height, width, height, BLUE);
-          break;
-
-        case Green:
-          display.fillRect(i * width, j * height, width, height, GREEN);
-          break;
-      }
-
+      uint8_t thisBlockColor = pixelGrid[i][j];
+      display.fillRect(i * blockWidthPx, j * blockHeightPx, blockWidthPx, blockHeightPx, colors[thisBlockColor]);
     }
   }
+
+  // drawRect
+  uint16_t xPosPx = xPos * blockWidthPx;
+  uint16_t yPosPx = yPos * blockHeightPx;
+  display.fillRect(xPosPx, yPosPx, blockWidthPx, blockHeightPx, colors[color]);
+  display.drawRect(xPosPx, yPosPx, blockWidthPx, blockHeightPx, WHITE);
 
   display.swap();
 
@@ -186,21 +204,21 @@ void tuh_hid_report_received_cb(uint8_t dev_addr, uint8_t instance, uint8_t cons
   {
     SnesGamepad_StatusWord_t new_snes_status;
 
-    new_snes_status.bits.Left = (uint8_t)(report[SnesGamepad_Report_XAxis]) < 127;
-    new_snes_status.bits.Right = (uint8_t)(report[SnesGamepad_Report_XAxis]) > 127;
-    new_snes_status.bits.Up = (uint8_t)(report[SnesGamepad_Report_YAxis]) < 127;
-    new_snes_status.bits.Down = (uint8_t)(report[SnesGamepad_Report_YAxis]) > 127;
+    new_snes_status.Left = (uint8_t)(report[SnesGamepad_Report_XAxis]) < 127;
+    new_snes_status.Right = (uint8_t)(report[SnesGamepad_Report_XAxis]) > 127;
+    new_snes_status.Up = (uint8_t)(report[SnesGamepad_Report_YAxis]) < 127;
+    new_snes_status.Down = (uint8_t)(report[SnesGamepad_Report_YAxis]) > 127;
 
-    new_snes_status.bits.A = report[SnesGamepad_Report_ABXY] & SnesGamepad_Mask_A;
-    new_snes_status.bits.B = report[SnesGamepad_Report_ABXY] & SnesGamepad_Mask_B;
-    new_snes_status.bits.X = report[SnesGamepad_Report_ABXY] & SnesGamepad_Mask_X;
-    new_snes_status.bits.Y = report[SnesGamepad_Report_ABXY] & SnesGamepad_Mask_Y;
+    new_snes_status.A = report[SnesGamepad_Report_ABXY] & SnesGamepad_Mask_A;
+    new_snes_status.B = report[SnesGamepad_Report_ABXY] & SnesGamepad_Mask_B;
+    new_snes_status.X = report[SnesGamepad_Report_ABXY] & SnesGamepad_Mask_X;
+    new_snes_status.Y = report[SnesGamepad_Report_ABXY] & SnesGamepad_Mask_Y;
 
-    new_snes_status.bits.L = report[SnesGamepad_Report_LR] & SnesGamepad_Mask_L;
-    new_snes_status.bits.R = report[SnesGamepad_Report_LR] & SnesGamepad_Mask_R;
+    new_snes_status.L = report[SnesGamepad_Report_LR] & SnesGamepad_Mask_L;
+    new_snes_status.R = report[SnesGamepad_Report_LR] & SnesGamepad_Mask_R;
 
-    new_snes_status.bits.Start = report[SnesGamepad_Report_StartSelect] & SnesGamepad_Mask_Start;
-    new_snes_status.bits.Select = report[SnesGamepad_Report_StartSelect] & SnesGamepad_Mask_Select;
+    new_snes_status.Start = report[SnesGamepad_Report_StartSelect] & SnesGamepad_Mask_Start;
+    new_snes_status.Select = report[SnesGamepad_Report_StartSelect] & SnesGamepad_Mask_Select;
 
     // Update the global all at once so it's atomic
     snes_status.word = new_snes_status.word;

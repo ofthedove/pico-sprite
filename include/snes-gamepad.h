@@ -35,7 +35,7 @@ typedef union {
     bool R : 1;
     bool Start : 1;
     bool Select : 1;
-  } bits;
+  };
   uint16_t word;
 } SnesGamepad_StatusWord_t;
 
