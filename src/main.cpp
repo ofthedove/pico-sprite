@@ -136,8 +136,8 @@ void loop() {
     yPos++;
   }
 
-  xPos = CLAMP(0, xPos, gridWidth);
-  yPos = CLAMP(0, yPos, gridHeight);
+  xPos = CLAMP(0, xPos, gridWidth - 1);
+  yPos = CLAMP(0, yPos, gridHeight - 1);
 
   if (pressed.A) {
     color = Red;
