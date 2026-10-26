@@ -14,6 +14,7 @@
 
 #include "snes-gamepad.h"
 #include "colors.h"
+#include "utils.h"
 
 
 #include <Adafruit_dvhstx.h>
@@ -40,6 +41,15 @@ SnesGamepad_StatusWord_t snes_status_old;
 
 volatile bool pauseForUsb = false;
 volatile bool usbDone = false;
+
+enum
+{
+  Black,
+  Red,
+  Yellow,
+  Blue,
+  Green,
+};
 
 void setup() {
   Serial.begin(115200);
@@ -95,22 +105,95 @@ void loop() {
 
   snes_status_old.word = snes_status.word;
 
+  const int width = 30;
+  const int height = 30;
+  const int screenWidth = display.width() - (display.width() % width);
+  const int screenHeight = display.height() - (display.height() % height);
+  static int xPos = display.width() / 2;
+  static int yPos = display.height() / 2;
+  static uint16_t color = WHITE;
+
+  static uint8_t pixelGrid[10][8] = {0};
+
   if (status.bits.A) {
-    display.fillRect(display.width() / 2 + 10, display.height() / 2 - 10, 20, 20, RED);
+    color = RED;
   }
   if (status.bits.B) {
-    display.fillRect(display.width() / 2 - 10, display.height() / 2 + 10, 20, 20, YELLOW);
+    color = YELLOW;
   }
   if (status.bits.X) {
-    display.fillRect(display.width() / 2 - 10, display.height() / 2 - 30, 20, 20, BLUE);
+    color = BLUE;
   }
   if (status.bits.Y) {
-    display.fillRect(display.width() / 2 - 30, display.height() / 2 - 10, 20, 20, GREEN);
+    color = GREEN;
   }
 
-  display.drawLine(random(display.width()), random(display.height()),
-                  random(display.width()), random(display.height()),
-                  random(65536));
+  if (status.bits.Left) {
+    xPos -= 30;
+  }
+  if (status.bits.Right) {
+    xPos += 30;
+  }
+  if (status.bits.Up) {
+    yPos -= 30;
+  }
+  if (status.bits.Down) {
+    yPos += 30;
+  }
+
+  if (status.bits.Select) {
+    if (color == RED)
+      pixelGrid[xPos / width][yPos / height] = Red;
+    if (color == GREEN)
+      pixelGrid[xPos / width][yPos / height] = Green;
+    if (color == BLUE)
+      pixelGrid[xPos / width][yPos / height] = Blue;
+    if (color == YELLOW)
+      pixelGrid[xPos / width][yPos / height] = Yellow;
+  }
+
+  xPos = CLAMP(0, xPos, screenWidth);
+  yPos = CLAMP(0, yPos, screenHeight);
+
+  display.fillScreen(BLACK);
+
+  // drawRect
+  display.fillRect(xPos, yPos, width, height, color);
+
+  // Draw Screen
+  for(int i = 0; i < 10; i++)
+  {
+    for(int j = 0; j < 8; j++)
+    {
+      switch(pixelGrid[i][j])
+      {
+        case Black:
+          // do nothing
+          break;
+
+        case Red:
+          display.fillRect(i * width, j * height, width, height, RED);
+          break;
+
+        case Yellow:
+          display.fillRect(i * width, j * height, width, height, YELLOW);
+          break;
+
+        case Blue:
+          display.fillRect(i * width, j * height, width, height, BLUE);
+          break;
+
+        case Green:
+          display.fillRect(i * width, j * height, width, height, GREEN);
+          break;
+      }
+
+    }
+  }
+
+  // display.drawLine(random(display.width()), random(display.height()),
+  //                 random(display.width()), random(display.height()),
+  //                 random(65536));
   sleep_ms(1);
 }
 
@@ -163,8 +246,8 @@ void tuh_hid_report_received_cb(uint8_t dev_addr, uint8_t instance, uint8_t cons
     // Update the global all at once so it's atomic
     snes_status.word = new_snes_status.word;
 
-    Serial.print("Status: ");
-    Serial.println(snes_status.word, HEX);
+    // Serial.print("Status: ");
+    // Serial.println(snes_status.word, HEX);
 
     // if(x < 127) { Serial.print("Left   ");} else
     // if(x > 127) { Serial.print("Right  ");} else
