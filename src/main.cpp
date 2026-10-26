@@ -11,36 +11,18 @@
 #include "tusb.h"
 #include "Adafruit_TinyUSB.h"
 
-
 #include "snes-gamepad.h"
 #include "colors.h"
 #include "utils.h"
 
-
 #include <Adafruit_dvhstx.h>
 
-#if defined(ADAFRUIT_FEATHER_RP2350_HSTX)
-DVHSTXPinout pinConfig = ADAFRUIT_FEATHER_RP2350_CFG;
-#elif defined(ADAFRUIT_METRO_RP2350)
-DVHSTXPinout pinConfig = ADAFRUIT_METRO_RP2350_CFG;
-#elif defined(ARDUINO_ADAFRUIT_FRUITJAM_RP2350)
-DVHSTXPinout pinConfig = ADAFRUIT_FRUIT_JAM_CFG;
-#elif (defined(ARDUINO_RASPBERRY_PI_PICO_2) || defined(ARDUINO_RASPBERRY_PI_PICO_2W))
 DVHSTXPinout pinConfig = ADAFRUIT_HSTXDVIBELL_CFG;
-#else
-// If your board definition has PIN_CKP and related defines,
-// DVHSTX_PINOUT_DEFAULT is available
-DVHSTXPinout pinConfig = DVHSTX_PINOUT_DEFAULT;
-#endif
-
-DVHSTX16 display(pinConfig, DVHSTX_RESOLUTION_320x240);
+DVHSTX16 display(pinConfig, DVHSTX_RESOLUTION_320x240, true);
 
 volatile bool dvi_initialized = false;
 volatile SnesGamepad_StatusWord_t snes_status;
 SnesGamepad_StatusWord_t snes_status_old;
-
-volatile bool pauseForUsb = false;
-volatile bool usbDone = false;
 
 enum
 {
@@ -51,48 +33,31 @@ enum
   Green,
 };
 
+void setup1() {
+  while(!dvi_initialized) { delay(1); }
+  rp2040_configure_pio_usb();
+  USBHost.begin(1);
+  Serial.println("Core1: USB Host Started");
+}
+
+void loop1() {
+  USBHost.task();
+  Serial.flush();
+}
+
 void setup() {
   Serial.begin(115200);
 
-
-
-  while(!Serial);
-  delay(2000);
-
-  // pauseForUsb = true;
-  // while(!usbDone) { delay(1); }
+  // while(!Serial);
+  // delay(2000);
 
   if (!display.begin()) { // Blink LED if insufficient RAM
     pinMode(LED_BUILTIN, OUTPUT);
     for (;;)
       digitalWrite(LED_BUILTIN, (millis() / 500) & 1);
   }
-  Serial.println("display initialized");
+  Serial.println("Core0: Display initialized");
   dvi_initialized = true;
-}
-
-void setup1() {
-  while(!dvi_initialized) { delay(1); }
-
-  // configure pio-usb: defined in usbh_helper.h
-  rp2040_configure_pio_usb();
-
-  Serial.println("helper done");
-
-  Serial.print("Current clock speed: ");
-  Serial.print(rp2040.f_cpu() / 1000000);
-  Serial.println(" MHz");
-
-  // run host stack on controller (rhport) 1
-  // Note: For rp2040 pico-pio-usb, calling USBHost.begin() on core1 will have most of the
-  // host bit-banging processing works done in core1 to free up core0 for other works
-  USBHost.begin(1);
-  Serial.println("begin done");
-  delay(3000);
-  Serial.print("USB D+ Pin:");
-  Serial.println(PIN_USB_HOST_DP);
-  Serial.print("USB 5V Pin:");
-  Serial.println(PIN_5V_EN);
 }
 
 void loop() {
@@ -109,8 +74,8 @@ void loop() {
   const int height = 30;
   const int screenWidth = display.width() - (display.width() % width);
   const int screenHeight = display.height() - (display.height() % height);
-  static int xPos = display.width() / 2;
-  static int yPos = display.height() / 2;
+  static int xPos = screenWidth / 2;
+  static int yPos = screenHeight / 2;
   static uint16_t color = WHITE;
 
   static uint8_t pixelGrid[10][8] = {0};
@@ -191,15 +156,9 @@ void loop() {
     }
   }
 
-  // display.drawLine(random(display.width()), random(display.height()),
-  //                 random(display.width()), random(display.height()),
-  //                 random(65536));
-  sleep_ms(1);
-}
+  display.swap();
 
-void loop1() {
-  USBHost.task();
-  Serial.flush();
+  sleep_ms(1);
 }
 
 //--------------------------------------------------------------------+
@@ -245,43 +204,6 @@ void tuh_hid_report_received_cb(uint8_t dev_addr, uint8_t instance, uint8_t cons
 
     // Update the global all at once so it's atomic
     snes_status.word = new_snes_status.word;
-
-    // Serial.print("Status: ");
-    // Serial.println(snes_status.word, HEX);
-
-    // if(x < 127) { Serial.print("Left   ");} else
-    // if(x > 127) { Serial.print("Right  ");} else
-    //             { Serial.print("       ");}
-
-    // if(y < 127) { Serial.print("Up    ");} else
-    // if(y > 127) { Serial.print("Down  ");} else
-    //             { Serial.print("      ");}
-
-    // if(A) { Serial.print("A ");} else
-    //       { Serial.print("  ");}
-
-    // if(B) { Serial.print("B ");} else
-    //       { Serial.print("  ");}
-
-    // if(X) { Serial.print("X ");} else
-    //       { Serial.print("  ");}
-
-    // if(Y) { Serial.print("Y ");} else
-    //       { Serial.print("  ");}
-
-    // if(L) { Serial.print("L ");} else
-    //       { Serial.print("  ");}
-
-    // if(R) { Serial.print("R ");} else
-    //       { Serial.print("  ");}
-
-    // if(Start) { Serial.print("Start ");} else
-    //           { Serial.print("      ");}
-
-    // if(Select) { Serial.print("Select ");} else
-    //            { Serial.print("       ");}
-
-    // Serial.println();
   }
   else
   {
