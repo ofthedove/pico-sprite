@@ -38,7 +38,7 @@ enum
   MaxColors,
 
   HoldRepeatTicks = 25,
-  HistoryDepth = 100,
+  HistoryDepth = 100, // Max number of times you can undo
 
   blockWidthPx = 30,
   blockHeightPx = 30,
@@ -64,9 +64,10 @@ typedef struct {
   Color_t prevColor;
 } HistoryItem_t;
 
-// This needs to change to a circular buffer so we lose oldest history when full, not newest
-static_assert(HistoryDepth <= INT8_MAX);
-HistoryItem_t history[HistoryDepth];
+// Buffer needs to be one bigger than HistoryDepth b/c one slot must remain empty
+// (b/c is head == tail full or empty? We decide empty, always leave one slot empty, snake doesn't get to eat it's own tail)
+static_assert((HistoryDepth + 1) <= INT8_MAX);
+HistoryItem_t history[HistoryDepth + 1];
 uint8_t nextHistoryItem = 0;
 uint8_t oldestHistoryItem = 0;
 uint8_t redoDoneNextHistoryIndex = 0;
@@ -96,14 +97,14 @@ uint8_t HistoryPush(void)
   // The hard part is figuring out what the new value of next should be
   uint8_t returnValue = nextHistoryItem;
 
-  nextHistoryItem = IncrementWithWrap(nextHistoryItem, HistoryDepth - 1);
+  nextHistoryItem = IncrementWithWrap(nextHistoryItem, HistoryDepth);
 
   // Because "next" always points to the next unused space, there will always be at least 1 space
   //  in the buffer that can't be used. This is required to maintain the convention that if
   //  next == tail the buffer is empty.
   if(nextHistoryItem == oldestHistoryItem)
   {
-    oldestHistoryItem = IncrementWithWrap(oldestHistoryItem, HistoryDepth - 1);
+    oldestHistoryItem = IncrementWithWrap(oldestHistoryItem, HistoryDepth);
   }
 
   redoDoneNextHistoryIndex = nextHistoryItem;
@@ -123,7 +124,7 @@ bool HistoryPop(uint8_t *value)
 
   if(nextHistoryItem == 0)
   {
-    nextHistoryItem = HistoryDepth - 1;
+    nextHistoryItem = HistoryDepth;
   }
   else
   {
@@ -144,7 +145,7 @@ bool HistoryUnPop(uint8_t *value)
   }
 
   *value = nextHistoryItem;
-  nextHistoryItem = IncrementWithWrap(nextHistoryItem, HistoryDepth - 1);
+  nextHistoryItem = IncrementWithWrap(nextHistoryItem, HistoryDepth);
 
   Serial.printf("History UnPop next: %d oldest: %d redo: %d\r\n", nextHistoryItem, oldestHistoryItem, redoDoneNextHistoryIndex);
 
