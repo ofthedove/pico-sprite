@@ -38,6 +38,7 @@ enum
   MaxColors,
 
   HoldRepeatTicks = 25,
+  HistoryDepth = 100,
 
   blockWidthPx = 30,
   blockHeightPx = 30,
@@ -54,6 +55,19 @@ const uint16_t colors[MaxColors] = {
   BLUE,
   GREEN,
 };
+
+typedef uint8_t Color_t;
+
+typedef struct {
+  uint8_t xPos;
+  uint8_t yPos;
+  Color_t prevColor;
+} HistoryItem_t;
+
+// This needs to change to a circular buffer so we lose oldest history when full, not newest
+static_assert(HistoryDepth <= INT8_MAX);
+HistoryItem_t history[HistoryDepth];
+int8_t historyHead = -1;
 
 void setup1() {
   while(!dvi_initialized) { delay(1); }
@@ -153,7 +167,36 @@ void loop() {
   }
 
   if (status.Select) {
-    pixelGrid[xPos][yPos] = color;
+    if (pixelGrid[xPos][yPos] != color)
+    {
+      if(historyHead < HistoryDepth - 1)
+      {
+        historyHead++;
+        history[historyHead] = {
+          .xPos = xPos,
+          .yPos = yPos,
+          .prevColor = pixelGrid[xPos][yPos],
+        };
+
+        Serial.printf("History add Head %d color %d\r\n", historyHead, color);
+      }
+
+      pixelGrid[xPos][yPos] = color;
+    }
+  }
+
+  if (pressed.L || held.L)
+  {
+    Serial.printf("History pop attempt\r\n");
+
+    if(historyHead >= 0)
+    {
+      HistoryItem_t restore = history[historyHead];
+      pixelGrid[restore.xPos][restore.yPos] = restore.prevColor;
+      historyHead--;
+
+      Serial.printf("History pop Head %d color %d\r\n", historyHead, restore.prevColor);
+    }
   }
 
   display.fillScreen(BLACK);
