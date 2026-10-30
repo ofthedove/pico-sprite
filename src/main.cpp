@@ -69,6 +69,7 @@ static_assert(HistoryDepth <= INT8_MAX);
 HistoryItem_t history[HistoryDepth];
 uint8_t nextHistoryItem = 0;
 uint8_t oldestHistoryItem = 0;
+uint8_t redoDoneNextHistoryIndex = 0;
 
 /*!
  * @param value The value to be incremented
@@ -105,6 +106,10 @@ uint8_t HistoryPush(void)
     oldestHistoryItem = IncrementWithWrap(oldestHistoryItem, HistoryDepth - 1);
   }
 
+  redoDoneNextHistoryIndex = nextHistoryItem;
+
+  Serial.printf("History Push next: %d oldest: %d redo: %d\r\n", nextHistoryItem, oldestHistoryItem, redoDoneNextHistoryIndex);
+
   return returnValue;
 }
 
@@ -125,7 +130,24 @@ bool HistoryPop(uint8_t *value)
     nextHistoryItem--;
   }
 
+  Serial.printf("History Pop next: %d oldest: %d redo: %d\r\n", nextHistoryItem, oldestHistoryItem, redoDoneNextHistoryIndex);
+
   *value = nextHistoryItem;
+  return true;
+}
+
+bool HistoryUnPop(uint8_t *value)
+{
+  if(nextHistoryItem == redoDoneNextHistoryIndex)
+  {
+    return false;
+  }
+
+  *value = nextHistoryItem;
+  nextHistoryItem = IncrementWithWrap(nextHistoryItem, HistoryDepth - 1);
+
+  Serial.printf("History UnPop next: %d oldest: %d redo: %d\r\n", nextHistoryItem, oldestHistoryItem, redoDoneNextHistoryIndex);
+
   return true;
 }
 
@@ -236,7 +258,7 @@ void loop() {
         .prevColor = pixelGrid[xPos][yPos],
       };
 
-      Serial.printf("History add Head %d color %d\r\n", historyIndex, color);
+      // Serial.printf("History add Head %d color %d\r\n", historyIndex, color);
 
       pixelGrid[xPos][yPos] = color;
     }
@@ -244,16 +266,39 @@ void loop() {
 
   if (pressed.L || held.L)
   {
-    Serial.printf("History pop attempt\r\n");
+    // Serial.printf("History pop attempt\r\n");
 
     uint8_t historyIndex;
 
     if(HistoryPop(&historyIndex))
     {
-      HistoryItem_t restore = history[historyIndex];
-      pixelGrid[restore.xPos][restore.yPos] = restore.prevColor;
+      // We don't just restore the prev color, we swap the color between the grid and the history, so we can un-pop later
+      HistoryItem_t *restore = &history[historyIndex];
+      Color_t swapColor = pixelGrid[restore->xPos][restore->yPos];
+      Serial.printf("Pop color grid: %d history: %d\r\n", swapColor, restore->prevColor);
+      pixelGrid[restore->xPos][restore->yPos] = restore->prevColor;
+      restore->prevColor = swapColor;
 
-      Serial.printf("History pop Head %d color %d\r\n", historyIndex, restore.prevColor);
+      // Serial.printf("History pop Head %d color %d\r\n", historyIndex, restore.prevColor);
+    }
+  }
+
+  if (pressed.R || held.R)
+  {
+    // Serial.printf("History unpop attempt\r\n");
+
+    uint8_t historyIndex;
+
+    if(HistoryUnPop(&historyIndex))
+    {
+      // Since we swapped these on the way down the stack, now we swap them back.
+      HistoryItem_t *restore = &history[historyIndex];
+      Color_t swapColor = pixelGrid[restore->xPos][restore->yPos];
+      Serial.printf("Unpop color grid: %d history: %d\r\n", swapColor, restore->prevColor);
+      pixelGrid[restore->xPos][restore->yPos] = restore->prevColor;
+      restore->prevColor = swapColor;
+
+      // Serial.printf("History unp Head %d color %d\r\n", historyIndex, restore.prevColor);
     }
   }
 
