@@ -67,7 +67,67 @@ typedef struct {
 // This needs to change to a circular buffer so we lose oldest history when full, not newest
 static_assert(HistoryDepth <= INT8_MAX);
 HistoryItem_t history[HistoryDepth];
-int8_t historyHead = -1;
+uint8_t nextHistoryItem = 0;
+uint8_t oldestHistoryItem = 0;
+
+/*!
+ * @param value The value to be incremented
+ * @param max Value is allowed to be equal to this, but not to exceed it
+ * @return value + 1 if value was less than max. If value is equal to max, returns 0
+*/
+uint8_t IncrementWithWrap(uint8_t value, uint8_t max)
+{
+  if(value == max)
+  {
+    value = 0;
+  }
+  else
+  {
+    value++;
+  }
+
+  return value;
+}
+
+uint8_t HistoryPush(void)
+{
+  // Since next always points to the next unused space, knowing what to return is easy
+  // The hard part is figuring out what the new value of next should be
+  uint8_t returnValue = nextHistoryItem;
+
+  nextHistoryItem = IncrementWithWrap(nextHistoryItem, HistoryDepth - 1);
+
+  // Because "next" always points to the next unused space, there will always be at least 1 space
+  //  in the buffer that can't be used. This is required to maintain the convention that if
+  //  next == tail the buffer is empty.
+  if(nextHistoryItem == oldestHistoryItem)
+  {
+    oldestHistoryItem = IncrementWithWrap(oldestHistoryItem, HistoryDepth - 1);
+  }
+
+  return returnValue;
+}
+
+bool HistoryPop(uint8_t *value)
+{
+  if(nextHistoryItem == oldestHistoryItem)
+  {
+    // Buffer is empty, you can't pop!
+    return false;
+  }
+
+  if(nextHistoryItem == 0)
+  {
+    nextHistoryItem = HistoryDepth - 1;
+  }
+  else
+  {
+    nextHistoryItem--;
+  }
+
+  *value = nextHistoryItem;
+  return true;
+}
 
 void setup1() {
   while(!dvi_initialized) { delay(1); }
@@ -169,17 +229,14 @@ void loop() {
   if (status.Select) {
     if (pixelGrid[xPos][yPos] != color)
     {
-      if(historyHead < HistoryDepth - 1)
-      {
-        historyHead++;
-        history[historyHead] = {
-          .xPos = xPos,
-          .yPos = yPos,
-          .prevColor = pixelGrid[xPos][yPos],
-        };
+      uint8_t historyIndex = HistoryPush();
+      history[historyIndex] = {
+        .xPos = xPos,
+        .yPos = yPos,
+        .prevColor = pixelGrid[xPos][yPos],
+      };
 
-        Serial.printf("History add Head %d color %d\r\n", historyHead, color);
-      }
+      Serial.printf("History add Head %d color %d\r\n", historyIndex, color);
 
       pixelGrid[xPos][yPos] = color;
     }
@@ -189,13 +246,14 @@ void loop() {
   {
     Serial.printf("History pop attempt\r\n");
 
-    if(historyHead >= 0)
-    {
-      HistoryItem_t restore = history[historyHead];
-      pixelGrid[restore.xPos][restore.yPos] = restore.prevColor;
-      historyHead--;
+    uint8_t historyIndex;
 
-      Serial.printf("History pop Head %d color %d\r\n", historyHead, restore.prevColor);
+    if(HistoryPop(&historyIndex))
+    {
+      HistoryItem_t restore = history[historyIndex];
+      pixelGrid[restore.xPos][restore.yPos] = restore.prevColor;
+
+      Serial.printf("History pop Head %d color %d\r\n", historyIndex, restore.prevColor);
     }
   }
 
